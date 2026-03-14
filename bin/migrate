@@ -1,0 +1,160 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/**
+ * LPhenom Migrate CLI entry point (PHP / shared-hosting mode).
+ *
+ * Usage:
+ *   vendor/bin/migrate migrate            [--config=migrate.php] [--path=...] [--table=...]
+ *   vendor/bin/migrate migrate:rollback   [--config=migrate.php] [--path=...] [--table=...]
+ *   vendor/bin/migrate migrate:status     [--config=migrate.php] [--path=...] [--table=...]
+ *
+ * The --config file must return a ConnectionInterface instance OR an array:
+ *   ['connection' => ConnectionInterface, 'path' => '...', 'table' => '...']
+ *
+ * Example migrate.php:
+ *   <?php
+ *   use LPhenom\Db\Driver\ConnectionFactory;
+ *   return ConnectionFactory::create([
+ *       'driver'   => 'pdo_mysql',
+ *       'host'     => $_ENV['DB_HOST'] ?? 'localhost',
+ *       'port'     => (int)($_ENV['DB_PORT'] ?? 3306),
+ *       'dbname'   => $_ENV['DB_NAME'] ?? 'myapp',
+ *       'user'     => $_ENV['DB_USER'] ?? 'root',
+ *       'password' => $_ENV['DB_PASS'] ?? '',
+ *   ]);
+ */
+
+// ---- Autoload ---------------------------------------------------------------
+
+$autoloadPaths = [
+    __DIR__ . '/../vendor/autoload.php',     // when installed as a package
+    __DIR__ . '/../../autoload.php',          // when in vendor/bin/
+    __DIR__ . '/../../../autoload.php',       // deeper vendor path
+];
+
+$loaded = false;
+foreach ($autoloadPaths as $autoloadPath) {
+    if (file_exists($autoloadPath)) {
+        require_once $autoloadPath;
+        $loaded = true;
+        break;
+    }
+}
+
+if (!$loaded) {
+    fwrite(STDERR, 'Autoloader not found. Run: composer install' . PHP_EOL);
+    exit(1);
+}
+
+// ---- Parse options ----------------------------------------------------------
+
+/**
+ * @param string[] $argv
+ * @return array<string, string>
+ */
+function lphenom_migrate_parse_options(array $argv): array
+{
+    $options = [
+        'config' => 'migrate.php',
+        'path'   => 'database/migrations',
+        'table'  => 'schema_migrations',
+    ];
+
+    foreach ($argv as $arg) {
+        if (substr($arg, 0, 9) === '--config=') {
+            $options['config'] = substr($arg, 9);
+        } elseif (substr($arg, 0, 7) === '--path=') {
+            $options['path'] = substr($arg, 7);
+        } elseif (substr($arg, 0, 8) === '--table=') {
+            $options['table'] = substr($arg, 8);
+        }
+    }
+
+    return $options;
+}
+
+$options = lphenom_migrate_parse_options($argv);
+
+// ---- migrate:make — no DB connection needed ---------------------------------
+
+$command = $argv[1] ?? '';
+
+if ($command === 'migrate:make') {
+    $migrationName = $argv[2] ?? '';
+    $cmd           = new \LPhenom\Migrate\Command\MakeCommand($options['path'], $migrationName);
+
+    exit($cmd->run());
+}
+
+// ---- Load config ------------------------------------------------------------
+
+$configFile = $options['config'];
+if (!file_exists($configFile)) {
+    // Try relative to cwd
+    $configFile = getcwd() . DIRECTORY_SEPARATOR . $options['config'];
+}
+
+if (!file_exists($configFile)) {
+    fwrite(STDERR, 'Config file not found: ' . $options['config'] . PHP_EOL);
+    fwrite(STDERR, 'Create a migrate.php that returns a ConnectionInterface instance.' . PHP_EOL);
+    exit(1);
+}
+
+$configValue = require $configFile;
+
+$conn  = null;
+$path  = $options['path'];
+$table = $options['table'];
+
+if ($configValue instanceof \LPhenom\Db\Contract\ConnectionInterface) {
+    $conn = $configValue;
+} elseif (is_array($configValue)) {
+    $connVal = $configValue['connection'] ?? null;
+    if ($connVal instanceof \LPhenom\Db\Contract\ConnectionInterface) {
+        $conn = $connVal;
+    }
+    $pathVal = $configValue['path'] ?? null;
+    if (is_string($pathVal)) {
+        $path = $pathVal;
+    }
+    $tableVal = $configValue['table'] ?? null;
+    if (is_string($tableVal)) {
+        $table = $tableVal;
+    }
+}
+
+if ($conn === null) {
+    fwrite(STDERR, 'Config must return a ConnectionInterface or an array with "connection" key.' . PHP_EOL);
+    exit(1);
+}
+
+// ---- Build registry ---------------------------------------------------------
+
+$registry = new \LPhenom\Migrate\MigrationRegistry();
+$loader   = new \LPhenom\Migrate\MigrationLoader($path);
+
+try {
+    $loader->load($registry);
+} catch (\LPhenom\Migrate\Exception\MigrateException $e) {
+    fwrite(STDERR, 'Error loading migrations: ' . $e->getMessage() . PHP_EOL);
+    exit(1);
+}
+
+// ---- Dispatch ---------------------------------------------------------------
+
+$repository = new \LPhenom\Migrate\SchemaRepository($conn, $table);
+$migrator   = new \LPhenom\Migrate\Migrator($registry, $repository);
+$dispatcher = new \LPhenom\Migrate\CommandDispatcher($argv, $migrator, $conn, $path);
+
+try {
+    $exitCode = $dispatcher->dispatch();
+} catch (\Throwable $e) {
+    fwrite(STDERR, 'Fatal error: ' . $e->getMessage() . PHP_EOL);
+    exit(1);
+}
+
+exit($exitCode);
+
