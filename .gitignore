@@ -1,0 +1,9 @@
+/vendor/
+/build/coverage/
+/build/coverage.xml
+/lphenom-migrate.phar
+/.php-cs-fixer.cache
+/.phpunit.cache/
+/.phpunit.result.cache
+/.idea/
+/.vscode/

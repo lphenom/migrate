@@ -1,0 +1,104 @@
+# =============================================================================
+# Dockerfile.check — KPHP binary build + PHAR build verification
+#
+# Stage 1 (kphp-build):  Compiles lphenom/migrate with vkcom/kphp → CLI binary
+# Stage 2 (phar-build):  Builds and smoke-tests a PHAR with PHP 8.1
+#
+# Prerequisites:
+#   Run `composer install --no-dev` locally first so vendor/ is present.
+#   The deps stage copies vendor from the build context — this avoids
+#   GitHub VCS authentication issues inside the Docker daemon.
+#
+# Usage:
+#   composer install --no-dev
+#   docker build -f Dockerfile.check -t lphenom-migrate-check .
+#
+# In CI, add "composer install --no-dev" step before docker build.
+# =============================================================================
+
+# ── shared deps (copied from build context — pre-built by composer) ──────────
+
+FROM alpine:3.19 AS deps
+
+WORKDIR /app
+# vendor/ must be present in the build context (run `composer install` first)
+COPY vendor/ ./vendor/
+
+# ── Stage 1: KPHP binary build ────────────────────────────────────────────────
+# Uses the official vkcom/kphp image (Ubuntu 20.04 focal).
+# KPHP compiles PHP → C++ → static binary; does NOT use PHP at runtime.
+# php8.1-vkext is optional dev tooling (type stubs) — compilation works without it.
+
+FROM vkcom/kphp:latest AS kphp-build
+
+# Optionally install php8.1-vkext (KPHP-aware stubs).
+# Installation is best-effort; failure does NOT break compilation.
+RUN apt-get update -qq \
+    && apt-get install -y --no-install-recommends wget ca-certificates \
+    && wget -q --timeout=10 -O /etc/apt/trusted.gpg.d/vkpartner.asc \
+         https://artifactory-external.vkpartner.ru/artifactory/api/gpg/key/public \
+    && echo "deb [arch=amd64] https://artifactory-external.vkpartner.ru/artifactory/kphp focal main" \
+         > /etc/apt/sources.list.d/vkpartner.list \
+    && apt-get update -qq \
+    && apt-get install -y --no-install-recommends php8.1-vkext \
+    && echo "=== php8.1-vkext installed ===" \
+    || echo "=== php8.1-vkext SKIPPED (no network / repo unavailable — OK) ===" \
+    ; rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+COPY src/   ./src/
+COPY build/ ./build/
+COPY --from=deps /app/vendor/ ./vendor/
+
+# Compile to a CLI binary.
+# kphp exits non-zero on any compilation error — fails the Docker build.
+RUN kphp \
+        -d /build/kphp-out \
+        -M cli \
+        /build/build/kphp-entrypoint.php \
+    && echo "=== KPHP compilation: OK ===" \
+    && ls -lh /build/kphp-out/
+
+# Run the compiled binary (no args → prints usage → exits 0).
+# KPHP CLI binaries refuse to run as root — create a test user.
+RUN useradd -m kphp-runner \
+    && su kphp-runner -c '/build/kphp-out/cli' \
+    && echo "=== KPHP binary run: OK ==="
+
+# ── Stage 2: PHAR build ───────────────────────────────────────────────────────
+
+FROM php:8.1.31-cli AS phar-build
+
+WORKDIR /build
+
+RUN echo "phar.readonly = Off" > /usr/local/etc/php/conf.d/phar.ini
+
+# Install PDO + SQLite for smoke test
+RUN apt-get update -qq \
+    && apt-get install -y --no-install-recommends libsqlite3-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && docker-php-ext-install pdo pdo_sqlite
+
+COPY --from=composer:2.9.5 /usr/bin/composer /usr/bin/composer
+
+COPY src/          ./src/
+COPY build/        ./build/
+COPY composer.json ./composer.json
+COPY composer.lock ./composer.lock
+
+COPY --from=deps /app/vendor/ ./vendor/
+
+# Build PHAR
+RUN php -d phar.readonly=0 /build/build/build-phar.php
+
+# Smoke test
+RUN php /build/build/smoke-test-phar.php /build/lphenom-migrate.phar \
+    && echo "=== PHAR smoke-test: OK ==="
+
+# ── Final stage ───────────────────────────────────────────────────────────────
+
+FROM scratch AS check-complete
+COPY --from=kphp-build /build/kphp-out/cli          /kphp-cli-binary
+COPY --from=phar-build /build/lphenom-migrate.phar   /lphenom-migrate.phar
+
