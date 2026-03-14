@@ -18,12 +18,6 @@
         </include>
     </source>
 
-    <coverage>
-        <report>
-            <clover outputFile="build/coverage.xml"/>
-            <html outputDirectory="build/coverage"/>
-        </report>
-    </coverage>
 
 </phpunit>
 
