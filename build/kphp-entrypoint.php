@@ -6,19 +6,39 @@
  * Includes all KPHP-compatible source files via explicit require_once.
  * PSR-4 autoloading is not supported in KPHP.
  *
- * NOTE: MigrationLoader is intentionally EXCLUDED from this entrypoint.
- * Reason: MigrationLoader uses `require_once $dynamicPath` which KPHP cannot
- * compile (KPHP requires require_once arguments to be compile-time constants).
- * In KPHP mode, migrations MUST be registered explicitly via MigrationRegistry::register().
+ * WHY MigrationLoader is excluded:
+ *   MigrationLoader uses `require_once $this->path . '/' . $file` — a dynamic path
+ *   computed at runtime from scandir() results.
+ *   KPHP compiles PHP → C++ at build time and must resolve ALL require_once paths
+ *   during compilation, not at runtime. A KPHP binary contains no PHP interpreter,
+ *   so it cannot load PHP files at runtime.
  *
- * PHP-only components (shared-hosting mode):
- *   MigrationLoader — dynamically loads migration files from a directory
+ *   In KPHP mode, migrations are registered EXPLICITLY:
+ *     require_once 'path/to/migration_file.php';
+ *     $registry->register(new MigrationXXX());
+ *   These paths are compile-time constants — KPHP can follow them.
+ *
+ * PHP-only components (shared-hosting mode only):
+ *   MigrationLoader   — dynamically loads migration files from a directory
+ *   MakeCommand       — generates new migration PHP files (pointless in compiled binary)
+ *
+ * Commands available in KPHP binary:
+ *   migrate             ✅
+ *   migrate:rollback    ✅
+ *   migrate:status      ✅
+ *   migrate:make        ❌  (PHP/shared-hosting only)
  *
  * Build:
  *   kphp -d /build/kphp-out -M cli /build/build/kphp-entrypoint.php
  *
- * Run:
- *   /build/kphp-out/cli                # shows usage, exits 0
+ * Run (smoke test — no args → shows usage, exits 0):
+ *   /build/kphp-out/cli
+ *
+ * Run (real usage with FfiMySqlConnection):
+ *   DB_HOST=localhost DB_NAME=myapp DB_USER=root DB_PASS=secret \
+ *       /build/kphp-out/cli migrate
+ *
+ * See docs/migrate.md for the full KPHP workflow.
  */
 
 declare(strict_types=1);
@@ -43,7 +63,7 @@ require_once __DIR__ . '/../src/MigrationAutoRegistrar.php';
 require_once __DIR__ . '/../src/SchemaRepository.php';
 require_once __DIR__ . '/../src/Migrator.php';
 require_once __DIR__ . '/../src/Command/CommandInterface.php';
-require_once __DIR__ . '/../src/Command/MakeCommand.php';
+require_once __DIR__ . '/../src/Command/MakeCommand.php'; // compiles OK; migrate:make exits early in binary mode
 require_once __DIR__ . '/../src/Command/MigrateCommand.php';
 require_once __DIR__ . '/../src/Command/RollbackCommand.php';
 require_once __DIR__ . '/../src/Command/StatusCommand.php';

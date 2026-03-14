@@ -8,7 +8,7 @@
 |---|---|
 | `MigrationRegistry` — типизированный массив `array<string, MigrationInterface>` | ✅ |
 | `MigrationAutoRegistrar` — static property + static method calls | ✅ |
-| `MigrationLoader` — `require_once` + `scandir()` + `substr()` | ✅ |
+| `MigrationLoader` — `require_once $dynamicPath` (runtime path) | ❌ PHP-only |
 | `SchemaRepository` — `array<string, Param>` params, явные null-проверки | ✅ |
 | `Migrator` — `sort()`, `in_array()`, `count()` | ✅ |
 | `CommandDispatcher` — `if/elseif` вместо `match` | ✅ |
@@ -113,7 +113,8 @@ require_once __DIR__ . '/../vendor/lphenom/db/src/Migration/MigrationInterface.p
 require_once __DIR__ . '/../src/Exception/MigrateException.php';
 require_once __DIR__ . '/../src/MigrationRegistry.php';
 require_once __DIR__ . '/../src/MigrationAutoRegistrar.php';
-require_once __DIR__ . '/../src/MigrationLoader.php';
+// NOTE: MigrationLoader is NOT included — uses require_once $variable which KPHP cannot compile.
+// In KPHP mode, register all migrations explicitly via MigrationRegistry::register().
 require_once __DIR__ . '/../src/SchemaRepository.php';
 require_once __DIR__ . '/../src/Migrator.php';
 require_once __DIR__ . '/../src/Command/CommandInterface.php';

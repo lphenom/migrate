@@ -260,25 +260,205 @@ $status = $migrator->status(); // array<string, string>: version => 'applied'|'p
 
 ## KPHP-совместимость
 
-В KPHP-режиме автозагрузка не поддерживается. Вместо `MigrationLoader` регистрируйте миграции явно:
+`lphenom/migrate` полностью поддерживает два режима работы:
+
+| Режим | Как загружаются миграции | Подключение к БД |
+|---|---|---|
+| **Shared hosting (PHP)** | `MigrationLoader` из директории | PDO (PdoMySqlConnection) |
+| **KPHP binary** | Явный `require_once` + `MigrationRegistry::register()` | FFI (FfiMySqlConnection) |
+
+---
+
+### Режим 1: Shared hosting (PHP 8.1+)
+
+Используется файл `bin/migrate` с конфигом `migrate.php`:
+
+```bash
+# Применить миграции
+vendor/bin/migrate migrate --config=migrate.php --path=database/migrations
+
+# Откатить последний batch
+vendor/bin/migrate migrate:rollback --config=migrate.php
+
+# Показать статус
+vendor/bin/migrate migrate:status --config=migrate.php
+
+# Создать файл миграции
+vendor/bin/migrate migrate:make create_users_table
+```
+
+`migrate.php` должен возвращать `ConnectionInterface` или массив с ключом `connection`:
 
 ```php
-// build/kphp-entrypoint.php
-require_once __DIR__ . '/../src/...'; // все файлы через require_once
+<?php
+use LPhenom\Db\Driver\ConnectionFactory;
 
-$registry = new \LPhenom\Migrate\MigrationRegistry();
-$registry->register(new CreateUsersTable());
-$registry->register(new AddUsersIndex());
+return ConnectionFactory::create([
+    'driver'   => 'pdo_mysql',
+    'host'     => $_ENV['DB_HOST'] ?? 'localhost',
+    'dbname'   => $_ENV['DB_NAME'] ?? 'myapp',
+    'user'     => $_ENV['DB_USER'] ?? 'root',
+    'password' => $_ENV['DB_PASS'] ?? '',
+]);
+```
 
-$conn       = new \MyApp\FfiMySqlConnection(...);
-$repository = new \LPhenom\Migrate\SchemaRepository($conn);
+---
+
+### Режим 2: KPHP compiled binary
+
+В KPHP все PHP-файлы компилируются в C++ → статический бинарник **без PHP runtime**.
+Поэтому динамическая загрузка PHP-файлов (`MigrationLoader`) недоступна в runtime.
+
+**Workflow:**
+
+#### Шаг 1: Создайте migration-файлы (PHP 8.1 синтаксис)
+
+```php
+<?php
+// database/migrations/20260101000001_create_users.php
+declare(strict_types=1);
+
+use LPhenom\Db\Contract\ConnectionInterface;
+use LPhenom\Db\Migration\MigrationInterface;
+use LPhenom\Migrate\MigrationAutoRegistrar;
+
+final class Migration20260101000001 implements MigrationInterface
+{
+    public function getVersion(): string
+    {
+        return '20260101000001';
+    }
+
+    public function up(ConnectionInterface $conn): void
+    {
+        $conn->execute(
+            'CREATE TABLE users (id INTEGER NOT NULL, name VARCHAR(255) NOT NULL, PRIMARY KEY (id))'
+        );
+    }
+
+    public function down(ConnectionInterface $conn): void
+    {
+        $conn->execute('DROP TABLE IF EXISTS users');
+    }
+}
+
+MigrationAutoRegistrar::register(new Migration20260101000001());
+```
+
+> **Важно:** `MigrationAutoRegistrar::register()` в KPHP entrypoint вызывается с `$registry` установленным
+> через `MigrationAutoRegistrar::setRegistry()`, как и в PHP режиме. Или регистрируйте напрямую через `$registry->register()`.
+
+#### Шаг 2: Создайте KPHP entrypoint файл
+
+```php
+<?php
+// build/kphp-entrypoint.php — замените под свой проект
+declare(strict_types=1);
+
+// lphenom/db зависимости (в правильном порядке)
+require_once __DIR__ . '/../vendor/lphenom/db/src/Param/Param.php';
+require_once __DIR__ . '/../vendor/lphenom/db/src/Param/ParamBinder.php';
+require_once __DIR__ . '/../vendor/lphenom/db/src/Contract/ResultInterface.php';
+require_once __DIR__ . '/../vendor/lphenom/db/src/Contract/TransactionCallbackInterface.php';
+require_once __DIR__ . '/../vendor/lphenom/db/src/Contract/ConnectionInterface.php';
+require_once __DIR__ . '/../vendor/lphenom/db/src/Migration/MigrationInterface.php';
+require_once __DIR__ . '/../vendor/lphenom/db/src/Driver/FfiMySqlHeader.php';
+require_once __DIR__ . '/../vendor/lphenom/db/src/Driver/FfiMySqlResult.php';
+require_once __DIR__ . '/../vendor/lphenom/db/src/Driver/FfiMySqlConnection.php';
+
+// lphenom/migrate (MigrationLoader исключён: KPHP не поддерживает require_once $variable)
+require_once __DIR__ . '/../src/Exception/MigrateException.php';
+require_once __DIR__ . '/../src/MigrationRegistry.php';
+require_once __DIR__ . '/../src/MigrationAutoRegistrar.php';
+require_once __DIR__ . '/../src/SchemaRepository.php';
+require_once __DIR__ . '/../src/Migrator.php';
+require_once __DIR__ . '/../src/Command/CommandInterface.php';
+require_once __DIR__ . '/../src/Command/MigrateCommand.php';
+require_once __DIR__ . '/../src/Command/RollbackCommand.php';
+require_once __DIR__ . '/../src/Command/StatusCommand.php';
+require_once __DIR__ . '/../src/CommandDispatcher.php';
+
+// Явно регистрируем все migration-файлы (без MigrationLoader)
+require_once __DIR__ . '/../database/migrations/20260101000001_create_users.php';
+require_once __DIR__ . '/../database/migrations/20260101000002_add_users_index.php';
+// ... добавляйте новые миграции сюда
+
+// Подключение к БД через FFI (KPHP-native)
+$conn = new \LPhenom\Db\Driver\FfiMySqlConnection(
+    $_ENV['DB_HOST'] ?? 'localhost',
+    (int) ($_ENV['DB_PORT'] ?? 3306),
+    $_ENV['DB_NAME'] ?? 'myapp',
+    $_ENV['DB_USER'] ?? 'root',
+    $_ENV['DB_PASS'] ?? ''
+);
+
+// Registry — наполняется через MigrationAutoRegistrar при require_once выше
+$registry   = new \LPhenom\Migrate\MigrationRegistry();
+
+// Файлы миграций вызвали MigrationAutoRegistrar::register() при require_once,
+// но без setRegistry(). Поэтому используем прямую регистрацию:
+$registry->register(new Migration20260101000001());
+$registry->register(new Migration20260101000002());
+
+$repository = new \LPhenom\Migrate\SchemaRepository($conn, 'schema_migrations');
 $migrator   = new \LPhenom\Migrate\Migrator($registry, $repository);
-$dispatcher = new \LPhenom\Migrate\CommandDispatcher($argv, $migrator, $conn);
 
+$cliArgs = [];
+foreach ($argv as $a) {
+    $cliArgs[] = (string) $a;
+}
+
+$dispatcher = new \LPhenom\Migrate\CommandDispatcher($cliArgs, $migrator, $conn);
 exit($dispatcher->dispatch());
 ```
 
-> Подробнее о KPHP-совместимости — в [kphp-compatibility.md](./kphp-compatibility.md).
+#### Шаг 3: Скомпилируйте бинарник
+
+```bash
+# Через Docker (рекомендуется)
+docker run --rm -v "$(pwd)":/build vkcom/kphp:latest \
+    kphp -d /build/kphp-out -M cli /build/build/kphp-entrypoint.php
+
+# Или через make (если настроено)
+make kphp-check
+```
+
+#### Шаг 4: Используйте бинарник
+
+```bash
+# Показать help
+./kphp-out/cli
+
+# Применить миграции
+DB_HOST=localhost DB_NAME=myapp DB_USER=root DB_PASS=secret \
+    ./kphp-out/cli migrate
+
+# Откатить последний batch
+./kphp-out/cli migrate:rollback
+
+# Статус
+./kphp-out/cli migrate:status
+```
+
+**Что работает в KPHP binary:**
+
+| Команда | Статус |
+|---|---|
+| `migrate` (apply pending) | ✅ |
+| `migrate:rollback` | ✅ |
+| `migrate:status` | ✅ |
+| `migrate:make` | ❌ Только в PHP-режиме (генерирует PHP-файлы) |
+
+**Добавление новой миграции в KPHP-проект:**
+
+1. Создайте файл миграции (PHP-синтаксис)
+2. Добавьте `require_once` в entrypoint
+3. Добавьте `$registry->register(new MigrationXXX())` в entrypoint
+4. Перекомпилируйте бинарник: `kphp -d ... -M cli entrypoint.php`
+
+> **Примечание:** `migrate:make` генерирует заготовку migration-файла и доступен только в PHP (shared hosting) режиме. В KPHP binary генерировать PHP-файлы бессмысленно, так как для применения новых миграций бинарник всё равно нужно перекомпилировать.
+
+> Подробнее о KPHP-совместимости и ограничениях — в [kphp-compatibility.md](./kphp-compatibility.md).
 
 ---
 
@@ -294,7 +474,7 @@ make test
 # Проверить стиль кода
 make lint
 
-# Проверить KPHP-совместимость
+# Проверить KPHP-совместимость + PHAR build
 make kphp-check
 ```
 
