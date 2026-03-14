@@ -111,6 +111,32 @@ MigrationAutoRegistrar::register(new Migration20260101000001());
 
 ## Команды
 
+### `migrate:make <name>` — создать файл миграции
+
+Генерирует новый файл миграции с правильной структурой (аналог `php artisan make:migration` в Laravel).
+
+```bash
+vendor/bin/migrate migrate:make create_users_table
+vendor/bin/migrate migrate:make "add email to users"
+vendor/bin/migrate migrate:make add-index-to-posts --path=database/migrations
+```
+
+Результат:
+```
+Migration created: database/migrations/20260314123456_create_users_table.php
+Class:             Migration20260314123456
+Version:           20260314123456
+```
+
+Сгенерированный файл содержит готовый шаблон с `up()`, `down()`, `getVersion()` и автоматической регистрацией через `MigrationAutoRegistrar::register()`.
+
+**Особенности:**
+- Версия — `YmdHis` timestamp: `20260314123456`
+- Имя файла: `{version}_{name}.php`, класс: `Migration{version}`
+- Автоматически создаёт директорию если не существует
+- Нормализует имя: пробелы/дефисы → подчёркивания, lowercase
+- Не требует подключения к базе данных
+
 ### `migrate` — применить все ожидающие миграции
 
 ```bash
