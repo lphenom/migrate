@@ -10,8 +10,10 @@ jobs:
   test:
     name: PHP ${{ matrix.php }} — Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     strategy:
+      fail-fast: false
       matrix:
         php: [ "8.1", "8.2", "8.3" ]
 
@@ -25,12 +27,26 @@ jobs:
           php-version: ${{ matrix.php }}
           extensions: pdo, pdo_sqlite
           coverage: none
+          tools: composer:v2
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ matrix.php }}-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            composer-${{ matrix.php }}-
+            composer-
 
       - name: Validate composer.json
         run: composer validate --strict
 
       - name: Install dependencies
-        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader --no-scripts
 
       - name: Run PHPUnit
         run: vendor/bin/phpunit --colors=always
@@ -38,6 +54,7 @@ jobs:
   lint:
     name: PHP 8.1 — Lint (php-cs-fixer)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -48,9 +65,23 @@ jobs:
         with:
           php-version: "8.1"
           coverage: none
+          tools: composer:v2
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-8.1-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            composer-8.1-
+            composer-
 
       - name: Install dependencies
-        run: composer install --no-interaction --prefer-dist
+        run: composer install --no-interaction --prefer-dist --no-scripts
 
       - name: Check code style
         run: vendor/bin/php-cs-fixer fix --dry-run --diff
@@ -58,6 +89,7 @@ jobs:
   analyse:
     name: PHP 8.1 — PHPStan
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -68,9 +100,23 @@ jobs:
         with:
           php-version: "8.1"
           coverage: none
+          tools: composer:v2
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-8.1-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            composer-8.1-
+            composer-
 
       - name: Install dependencies
-        run: composer install --no-interaction --prefer-dist
+        run: composer install --no-interaction --prefer-dist --no-scripts
 
       - name: Run PHPStan
         run: vendor/bin/phpstan analyse --no-progress
