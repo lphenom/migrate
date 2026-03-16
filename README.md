@@ -88,7 +88,7 @@ make kphp-check  # проверить KPHP-компиляцию
 ## Требования
 
 - PHP >= 8.1
-- [lphenom/db](https://github.com/lphenom/db) ^0.3
+- [lphenom/db](https://github.com/lphenom/db) ^0.1
 
 ## Лицензия
 
