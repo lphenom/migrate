@@ -1,91 +1,73 @@
-# Contributing to lphenom/migrate
+# Участие в разработке lphenom/migrate
 
-Thank you for considering contributing!
+Спасибо за интерес к проекту! 🎉
 
-## Requirements
+## Требования
 
-- PHP 8.1+
+- PHP >= 8.1
+- Docker + Docker Compose (для запуска тестов с сервисами)
 - Composer
-- Docker (recommended for dev environment)
 
-## Getting Started
+## Настройка окружения
 
 ```bash
 git clone git@github.com:lphenom/migrate.git
 cd migrate
 composer install
-```
 
-Or with Docker:
-```bash
-make install
-```
-
-## Running Tests
-
-```bash
-# With Docker (recommended)
+# Запуск тестов
 make test
-
-# Local
-php vendor/bin/phpunit
 ```
 
-## Code Style
+## Стиль кода
 
-This project uses `php-cs-fixer` (PSR-12 + strict types):
+PSR-12. Автоисправление:
 
 ```bash
-# Check
-make lint
-
-# Auto-fix
 make lint-fix
 ```
 
-## Static Analysis
+Проверка:
 
 ```bash
-make analyse
+make lint
 ```
 
-## KPHP Compatibility Check
-
-All code must compile under KPHP:
+## Статический анализ
 
 ```bash
-make kphp-check
+make analyse   # PHPStan level 8
 ```
 
-## Guidelines
+## Совместимость с KPHP
 
-1. `declare(strict_types=1)` in every PHP file
-2. No `Reflection`, `eval`, `$$var`, `new $class()`, dynamic loading
-3. No `str_starts_with` / `str_ends_with` / `str_contains` (use `substr` / `strpos`)
-4. No trailing commas in function calls (KPHP incompatible)
-5. No `__destruct()` methods
-6. No constructor property promotion or `readonly` properties
-7. PHPDoc `@var array<K, V>` for all arrays
-8. Small, focused commits — one logical change per commit
-9. Tests for every new feature
+Весь код **обязан** оставаться KPHP-совместимым. Правила:
 
-## Commit Convention
+- Нет constructor property promotion (`__construct(private $x)`)
+- Нет `readonly` свойств
+- Нет `Reflection`, `eval()`, `$$var`, `new $className()`
+- Нет `str_starts_with`, `str_ends_with`, `str_contains` — используйте `substr`/`strpos`
+- `try/catch` всегда с явным `catch`
+- Нет `callable` в типизированных массивах
+
+## Сообщения коммитов
+
+Следуйте [Conventional Commits](https://www.conventionalcommits.org/):
 
 ```
-chore: initial setup
-feat(migrate): add migration loader
-fix(schema): handle empty batch table
-docs(migrate): update usage guide
-test(migrator): add rollback batch test
+feat(migrate): добавить поддержку TTL
+fix(migrate): исправить обработку пустого ключа
+test(migrate): добавить интеграционный тест
 ```
 
-## Pull Requests
+## Чеклист Pull Request
 
-- Branch from `main`
-- All CI checks must pass (tests, lint, phpstan, KPHP check)
-- Update docs if API changes
+- [ ] Тесты проходят: `make test`
+- [ ] Нет ошибок линтера: `make lint`
+- [ ] PHPStan проходит: `make analyse`
+- [ ] KPHP-совместимо (нет запрещённых конструкций)
+- [ ] Документация обновлена при изменении публичного API
 
-## License
+## Лицензия
 
-MIT — see [LICENSE](LICENSE).
-
+Участвуя в проекте, вы соглашаетесь, что ваши изменения будут лицензированы под [MIT License](LICENSE).

@@ -4,20 +4,20 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "e171833170c4959c68c23217a0d5c77c",
+    "content-hash": "baf14b9bfbbad842c7020d6611cb3a58",
     "packages": [
         {
             "name": "lphenom/db",
-            "version": "v0.3.1",
+            "version": "0.1.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/lphenom/db.git",
-                "reference": "aec74574942a2c043eef053aabaaf03a6059db58"
+                "reference": "958c14b932d48a65ee29c2bb704d79faf673169d"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/lphenom/db/zipball/aec74574942a2c043eef053aabaaf03a6059db58",
-                "reference": "aec74574942a2c043eef053aabaaf03a6059db58",
+                "url": "https://api.github.com/repos/lphenom/db/zipball/958c14b932d48a65ee29c2bb704d79faf673169d",
+                "reference": "958c14b932d48a65ee29c2bb704d79faf673169d",
                 "shasum": ""
             },
             "require": {
@@ -59,10 +59,10 @@
             ],
             "description": "LPhenom database layer — raw SQL, repository pattern, PDO driver, migration contracts",
             "support": {
-                "source": "https://github.com/lphenom/db/tree/v0.3.1",
+                "source": "https://github.com/lphenom/db/tree/v0.1.0",
                 "issues": "https://github.com/lphenom/db/issues"
             },
-            "time": "2026-03-12T18:30:16+00:00"
+            "time": "2026-03-16T17:44:20+00:00"
         }
     ],
     "packages-dev": [
@@ -4307,7 +4307,7 @@
     ],
     "aliases": [],
     "minimum-stability": "stable",
-    "stability-flags": {},
+    "stability-flags": [],
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {
@@ -4319,5 +4319,5 @@
     "platform-overrides": {
         "php": "8.1.0"
     },
-    "plugin-api-version": "2.9.0"
+    "plugin-api-version": "2.6.0"
 }

@@ -1,21 +1,20 @@
-# Security Policy
+# Политика безопасности
 
-## Supported Versions
+## Поддерживаемые версии
 
-| Version | Supported |
-|---------|-----------|
-| 0.x     | ✅ Yes     |
+| Версия | Поддержка |
+|--------|-----------|
+| 0.x    | ✅         |
 
-## Reporting a Vulnerability
+## Сообщить об уязвимости
 
-Please **do not** open a public GitHub issue for security vulnerabilities.
+Пожалуйста, **не** создавайте публичный GitHub Issue для уязвимостей безопасности.
 
-Email: **popkovd.o@yandex.ru**
+Отправьте подробный отчёт на **popkovd.o@yandex.ru**, указав:
 
-Include:
-- Description of the vulnerability
-- Steps to reproduce
-- Potential impact
+- Описание уязвимости
+- Шаги для воспроизведения
+- Затронутые версии
+- Предлагаемое исправление (опционально)
 
-We aim to respond within **72 hours** and provide a fix within **14 days** for critical issues.
-
+Мы стремимся ответить в течение **72 часов** и выпустить патч в течение **7 дней** для подтверждённых проблем.

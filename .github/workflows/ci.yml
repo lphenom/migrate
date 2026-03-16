@@ -49,7 +49,7 @@ jobs:
         run: composer install --no-interaction --prefer-dist --optimize-autoloader --no-scripts
 
       - name: Run PHPUnit
-        run: vendor/bin/phpunit --colors=always
+        run: vendor/bin/phpunit --colors=always --no-coverage
 
   lint:
     name: PHP 8.1 — Lint (php-cs-fixer)

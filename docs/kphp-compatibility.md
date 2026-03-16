@@ -112,9 +112,9 @@ require_once __DIR__ . '/../vendor/lphenom/db/src/Contract/ConnectionInterface.p
 require_once __DIR__ . '/../vendor/lphenom/db/src/Migration/MigrationInterface.php';
 require_once __DIR__ . '/../src/Exception/MigrateException.php';
 require_once __DIR__ . '/../src/MigrationRegistry.php';
-require_once __DIR__ . '/../src/MigrationAutoRegistrar.php';
-// NOTE: MigrationLoader is NOT included — uses require_once $variable which KPHP cannot compile.
-// In KPHP mode, register all migrations explicitly via MigrationRegistry::register().
+require_once __DIR__ . '/../src/CommandDispatcher.php';
+// ПРИМЕЧАНИЕ: MigrationLoader НЕ включён — использует require_once с переменной, что KPHP не компилирует.
+// В режиме KPHP регистрируйте все миграции явно через MigrationRegistry::register().
 require_once __DIR__ . '/../src/SchemaRepository.php';
 require_once __DIR__ . '/../src/Migrator.php';
 require_once __DIR__ . '/../src/Command/CommandInterface.php';
