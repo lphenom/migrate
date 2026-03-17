@@ -22,7 +22,7 @@ use LPhenom\Db\Param\ParamBinder;
  *  - array<string, Param> for named SQL parameters — KPHP-compatible homogeneous array.
  *  - MAX() may return null when table is empty; handled with explicit null check.
  *
- * Compatible with PHP 8.1+ and KPHP.
+ * @lphenom-build shared,kphp
  */
 final class SchemaRepository
 {

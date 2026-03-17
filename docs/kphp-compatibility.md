@@ -2,58 +2,67 @@
 
 Все правила и ограничения KPHP, специфичные для `lphenom/migrate`.
 
-## KPHP-совместимые компоненты
+## Аннотация `@lphenom-build`
 
-| Компонент | Статус |
+Каждый класс/интерфейс/исключение в `src/` помечается аннотацией `@lphenom-build` в docblock.
+Она явно декларирует, в каких режимах сборки присутствует файл:
+
+| Значение | Описание |
 |---|---|
-| `MigrationRegistry` — типизированный массив `array<string, MigrationInterface>` | ✅ KPHP-совместим |
-| `MigrationAutoRegistrar` — static property + static method calls | ✅ KPHP-совместим |
-| `SchemaRepository` — `array<string, Param>` params, явные null-проверки | ✅ KPHP-совместим |
-| `Migrator` — `sort()`, `in_array()`, `count()` | ✅ KPHP-совместим |
-| `CommandDispatcher` — `if/elseif` вместо `match` | ✅ KPHP-совместим |
-| `MigrateCommand` — явные вызовы Migrator::migrate() | ✅ KPHP-совместим |
-| `RollbackCommand` — явные вызовы Migrator::rollback() | ✅ KPHP-совместим |
-| `StatusCommand` — явные вызовы Migrator::status() | ✅ KPHP-совместим |
-| `MakeCommand` — генерация PHP-файлов через file_put_contents() | ✅ KPHP-совместим (компилируется; в KPHP-бинарнике команда migrate:make недоступна) |
-| `MigrationLoader` — `require_once $dynamicPath` (путь вычисляется в рантайме) | ❌ **PHP-only** (`@kphp-incompatible`) |
+| `shared` | Только PHP shared hosting режим (Composer autoload, PHP runtime) |
+| `kphp` | Включается в KPHP-сборку (`build/kphp-entrypoint.php`) |
+| `none` | Не включается ни в один режим (только для dev/tooling) |
 
-## Аннотация `@kphp-incompatible`
-
-Файлы, которые **не должны компилироваться через KPHP**, помечаются аннотацией `@kphp-incompatible`
-в docblock класса. Это явный маркер для разработчиков и CI-инструментов:
+**Формат:** `@lphenom-build <targets>` — одно или несколько значений через запятую.
 
 ```php
-/**
- * ...описание...
- *
- * @kphp-incompatible
- *
- * Этот класс НЕ включается в KPHP-сборку и НЕ компилируется через kphp.
- * Причина: ...
- *
- * В KPHP-режиме используйте: ...
- */
-final class MigrationLoader { ... }
+// Работает в обоих режимах:
+// @lphenom-build shared,kphp
+
+// Только PHP shared hosting (не KPHP):
+// @lphenom-build shared
+
+// Только для разработки / tooling:
+// @lphenom-build none
 ```
 
-### Правила для PHP-only файлов
+## KPHP-совместимые компоненты
 
-| Правило | Описание |
-|---|---|
-| Маркировка | Обязателен `@kphp-incompatible` в docblock |
-| Исключение из entrypoint | Файл **не** включается в `build/kphp-entrypoint.php` |
-| Комментарий в entrypoint | В entrypoint обязателен комментарий: почему файл исключён |
-| Альтернатива для KPHP | В docblock описан KPHP-способ достичь того же результата |
-
-### Текущие PHP-only файлы в lphenom/migrate
-
-| Файл | Причина исключения из KPHP |
-|---|---|
-| `src/MigrationLoader.php` | Использует `require_once $dynamicPath` — KPHP требует статические пути |
+| Компонент | Аннотация | Примечание |
+|---|---|---|
+| `MigrationRegistry` | `@lphenom-build shared,kphp` | Типизированный `array<string, MigrationInterface>` |
+| `MigrationAutoRegistrar` | `@lphenom-build shared,kphp` | Static property + static method calls |
+| `SchemaRepository` | `@lphenom-build shared,kphp` | `array<string, Param>`, явные null-проверки |
+| `Migrator` | `@lphenom-build shared,kphp` | `sort()`, `in_array()`, `count()` |
+| `CommandDispatcher` | `@lphenom-build shared,kphp` | `if/elseif` вместо `match` |
+| `CommandInterface` | `@lphenom-build shared,kphp` | Простой интерфейс |
+| `MakeCommand` | `@lphenom-build shared,kphp` | Компилируется; в KPHP-бинарнике `migrate:make` недоступна |
+| `MigrateCommand` | `@lphenom-build shared,kphp` | Явные вызовы `Migrator` |
+| `RollbackCommand` | `@lphenom-build shared,kphp` | Явные вызовы `Migrator` |
+| `StatusCommand` | `@lphenom-build shared,kphp` | Явные вызовы `Migrator` |
+| `MigrateException` | `@lphenom-build shared,kphp` | `RuntimeException` |
+| `MigrationLoader` | `@lphenom-build shared` | Динамический `require_once` — только PHP runtime |
 
 ## Принятые решения для KPHP
 
-### 1. Нет динамической загрузки классов
+### 1. `MigrationLoader` — PHP-only (`@lphenom-build shared`)
+
+`MigrationLoader::load()` выполняет `require_once $this->path . '/' . $file`, где путь
+вычисляется в рантайме из результатов `scandir()`. KPHP должен разрешить ВСЕ пути
+`require_once` статически (compile-time constants) — динамический путь недопустим.
+
+В KPHP-режиме миграции регистрируются явно в `build/kphp-entrypoint.php`:
+
+```php
+// ❌ ЗАПРЕЩЕНО в KPHP — MigrationLoader не включается в entrypoint
+require_once $this->path . '/' . $file; // runtime path — KPHP не может разрешить
+
+// ✅ ПРАВИЛЬНО для KPHP — статический путь в entrypoint
+require_once __DIR__ . '/../migrations/20260101000001_create_users.php';
+// файл сам вызывает: MigrationAutoRegistrar::register(new Migration20260101000001());
+```
+
+### 2. Нет динамической загрузки классов
 
 Обычные migration runners делают `new $className()`. Это запрещено в KPHP.
 
@@ -69,7 +78,7 @@ require_once $file;
 // файл сам вызывает: MigrationAutoRegistrar::register(new MyMigration());
 ```
 
-### 2. `substr()` вместо `str_starts_with()`
+### 3. `substr()` вместо `str_starts_with()`
 
 ```php
 // ❌ ЗАПРЕЩЕНО в KPHP
@@ -79,7 +88,7 @@ if (str_starts_with($arg, '--config=')) { ... }
 if (substr($arg, 0, 9) === '--config=') { ... }
 ```
 
-### 3. `if/elseif` вместо `match`
+### 4. `if/elseif` вместо `match`
 
 ```php
 // ❌ ограниченная поддержка в KPHP
@@ -90,7 +99,7 @@ if ($command === 'migrate') { ... }
 elseif ($command === 'migrate:rollback') { ... }
 ```
 
-### 4. Явная null-проверка после `MAX()`
+### 5. Явная null-проверка после `MAX()`
 
 ```php
 // ✅ SchemaRepository::getLastBatch()
@@ -101,7 +110,7 @@ if ($val === null) { return 0; }
 return (int) $val;
 ```
 
-### 5. `try/catch` с ловом `\Throwable` — не `try/finally`
+### 6. `try/catch` с ловом `\Throwable` — не `try/finally`
 
 ```php
 // ✅ MigrationLoader::load()
@@ -115,50 +124,49 @@ MigrationAutoRegistrar::clearRegistry(); // cleanup всегда
 if ($exception !== null) { throw new MigrateException(...); }
 ```
 
-### 6. `array<string, Param>` — однородный типизированный массив
+### 7. `array<string, Param>` — однородный типизированный массив
 
 ```php
 // ✅ SchemaRepository::record()
 $this->conn->execute('INSERT INTO ...', [
     ':version'    => ParamBinder::str($version),
     ':batch'      => ParamBinder::int($batch),
-    ':applied_at' => ParamBinder::str($appliedAt)
+    ':applied_at' => ParamBinder::str($appliedAt),
 ]);
 ```
 
-### 7. KPHP entrypoint — явная регистрация без MigrationLoader
+### 8. KPHP entrypoint — явная регистрация без MigrationLoader
 
-В `build/kphp-entrypoint.php` используется прямая регистрация:
+В `build/kphp-entrypoint.php` используется прямая регистрация (`@lphenom-build shared` файлы исключены):
 
 ```php
 $registry = new \LPhenom\Migrate\MigrationRegistry();
 $registry->register(new KphpExampleMigration());
+// MigrationLoader НЕ используется — @lphenom-build shared
 ```
-
-`MigrationLoader` не включается в KPHP entrypoint — он использует `require_once` с динамическим путём, что является PHP-only паттерном (для shared hosting).
 
 ## Структура entrypoint для KPHP
 
 ```php
-// build/kphp-entrypoint.php
+// build/kphp-entrypoint.php — только файлы с @lphenom-build shared,kphp
 require_once __DIR__ . '/../vendor/lphenom/db/src/Param/Param.php';
 require_once __DIR__ . '/../vendor/lphenom/db/src/Param/ParamBinder.php';
 require_once __DIR__ . '/../vendor/lphenom/db/src/Contract/ResultInterface.php';
 require_once __DIR__ . '/../vendor/lphenom/db/src/Contract/TransactionCallbackInterface.php';
 require_once __DIR__ . '/../vendor/lphenom/db/src/Contract/ConnectionInterface.php';
 require_once __DIR__ . '/../vendor/lphenom/db/src/Migration/MigrationInterface.php';
-require_once __DIR__ . '/../src/Exception/MigrateException.php';
-require_once __DIR__ . '/../src/MigrationRegistry.php';
-require_once __DIR__ . '/../src/CommandDispatcher.php';
-// ПРИМЕЧАНИЕ: MigrationLoader НЕ включён — использует require_once с переменной, что KPHP не компилирует.
-// В режиме KPHP регистрируйте все миграции явно через MigrationRegistry::register().
-require_once __DIR__ . '/../src/SchemaRepository.php';
-require_once __DIR__ . '/../src/Migrator.php';
-require_once __DIR__ . '/../src/Command/CommandInterface.php';
-require_once __DIR__ . '/../src/Command/MigrateCommand.php';
-require_once __DIR__ . '/../src/Command/RollbackCommand.php';
-require_once __DIR__ . '/../src/Command/StatusCommand.php';
-require_once __DIR__ . '/../src/CommandDispatcher.php';
+require_once __DIR__ . '/../src/Exception/MigrateException.php';   // @lphenom-build shared,kphp
+require_once __DIR__ . '/../src/MigrationRegistry.php';            // @lphenom-build shared,kphp
+require_once __DIR__ . '/../src/MigrationAutoRegistrar.php';       // @lphenom-build shared,kphp
+// src/MigrationLoader.php — ИСКЛЮЧЁН (@lphenom-build shared)
+require_once __DIR__ . '/../src/SchemaRepository.php';             // @lphenom-build shared,kphp
+require_once __DIR__ . '/../src/Migrator.php';                     // @lphenom-build shared,kphp
+require_once __DIR__ . '/../src/Command/CommandInterface.php';     // @lphenom-build shared,kphp
+require_once __DIR__ . '/../src/Command/MakeCommand.php';          // @lphenom-build shared,kphp
+require_once __DIR__ . '/../src/Command/MigrateCommand.php';       // @lphenom-build shared,kphp
+require_once __DIR__ . '/../src/Command/RollbackCommand.php';      // @lphenom-build shared,kphp
+require_once __DIR__ . '/../src/Command/StatusCommand.php';        // @lphenom-build shared,kphp
+require_once __DIR__ . '/../src/CommandDispatcher.php';            // @lphenom-build shared,kphp
 ```
 
 ## Ссылки

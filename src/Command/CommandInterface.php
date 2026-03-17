@@ -7,7 +7,7 @@ namespace LPhenom\Migrate\Command;
 /**
  * Contract for a single CLI command.
  *
- * Compatible with PHP 8.1+ and KPHP.
+ * @lphenom-build shared,kphp
  */
 interface CommandInterface
 {

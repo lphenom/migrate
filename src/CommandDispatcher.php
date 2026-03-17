@@ -24,7 +24,7 @@ use LPhenom\Migrate\Command\StatusCommand;
  *  - substr() used instead of str_starts_with() (not available in KPHP).
  *  - No dynamic class instantiation.
  *
- * Compatible with PHP 8.1+ and KPHP.
+ * @lphenom-build shared,kphp
  */
 final class CommandDispatcher
 {

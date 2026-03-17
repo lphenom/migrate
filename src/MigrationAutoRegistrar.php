@@ -22,7 +22,7 @@ use LPhenom\Migrate\Exception\MigrateException;
  *  - Static method calls are supported.
  *  - No callable, no Reflection, no dynamic class loading.
  *
- * Compatible with PHP 8.1+ and KPHP.
+ * @lphenom-build shared,kphp
  */
 final class MigrationAutoRegistrar
 {

@@ -10,7 +10,7 @@ use LPhenom\Migrate\Migrator;
 /**
  * Rolls back the last applied migration batch.
  *
- * Compatible with PHP 8.1+ and KPHP.
+ * @lphenom-build shared,kphp
  */
 final class RollbackCommand implements CommandInterface
 {

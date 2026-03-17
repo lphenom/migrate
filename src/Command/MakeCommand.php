@@ -28,7 +28,7 @@ namespace LPhenom\Migrate\Command;
  *  - No str_starts_with / str_ends_with / str_contains — not supported in KPHP.
  *  - fwrite(STDERR) — supported in KPHP CLI.
  *
- * Compatible with PHP 8.1+ and KPHP.
+ * @lphenom-build shared,kphp
  */
 final class MakeCommand implements CommandInterface
 {

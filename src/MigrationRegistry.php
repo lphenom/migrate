@@ -13,7 +13,7 @@ use LPhenom\Db\Migration\MigrationInterface;
  * This is the KPHP-compatible way to store migrations — no dynamic class loading,
  * no callable arrays, only explicit registration via register().
  *
- * Compatible with PHP 8.1+ and KPHP.
+ * @lphenom-build shared,kphp
  */
 final class MigrationRegistry
 {

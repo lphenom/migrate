@@ -9,7 +9,7 @@ use LPhenom\Migrate\Migrator;
 /**
  * Displays the status of all registered migrations.
  *
- * Compatible with PHP 8.1+ and KPHP.
+ * @lphenom-build shared,kphp
  */
 final class StatusCommand implements CommandInterface
 {

@@ -10,7 +10,7 @@ use LPhenom\Migrate\Migrator;
 /**
  * Applies all pending migrations.
  *
- * Compatible with PHP 8.1+ and KPHP.
+ * @lphenom-build shared,kphp
  */
 final class MigrateCommand implements CommandInterface
 {

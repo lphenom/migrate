@@ -7,7 +7,7 @@ namespace LPhenom\Migrate\Exception;
 /**
  * Base exception for lphenom/migrate.
  *
- * Compatible with PHP 8.1+ and KPHP.
+ * @lphenom-build shared,kphp
  */
 class MigrateException extends \RuntimeException
 {

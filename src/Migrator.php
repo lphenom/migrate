@@ -23,7 +23,7 @@ use LPhenom\Db\Contract\ConnectionInterface;
  *  - in_array() with strict=true is KPHP-compatible.
  *  - sort() on string[] is KPHP-compatible.
  *
- * Compatible with PHP 8.1+ and KPHP.
+ * @lphenom-build shared,kphp
  */
 final class Migrator
 {

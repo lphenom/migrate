@@ -11,7 +11,7 @@ use LPhenom\Migrate\Exception\MigrateException;
  *
  * Каждый файл миграции ДОЛЖЕН вызывать MigrationAutoRegistrar::register() на уровне файла,
  * чтобы самостоятельно зарегистрироваться в активном реестре. Это позволяет избежать
- * динамической загрузки классов (new $className()), но само по себе требует интерпретатора PHP.
+ * динамической загрузки классов (new $className()), но само по себе требует PHP-интерпретатора.
  *
  * Пример файла миграции (database/migrations/20260101000001_create_users.php):
  *   <?php
@@ -27,7 +27,7 @@ use LPhenom\Migrate\Exception\MigrateException;
  *   }
  *   MigrationAutoRegistrar::register(new Migration20260101000001());
  *
- * @kphp-incompatible
+ * @lphenom-build shared
  *
  * Этот класс НЕ включается в KPHP-сборку и НЕ компилируется через kphp.
  *
@@ -41,7 +41,7 @@ use LPhenom\Migrate\Exception\MigrateException;
  *   // файл сам вызывает: MigrationAutoRegistrar::register(new Migration20260101000001());
  *
  * Исключён из build/kphp-entrypoint.php.
- * Доступен только в PHP (shared hosting) режиме.
+ * Доступен только в PHP shared hosting режиме.
  */
 final class MigrationLoader
 {
@@ -56,9 +56,9 @@ final class MigrationLoader
     }
 
     /**
-     * Load all .php files from the migrations directory and register them.
+     * Загружает все .php файлы из директории миграций и регистрирует их.
      *
-     * @throws MigrateException if the directory does not exist or a file throws
+     * @throws MigrateException если директория не существует или файл выбросил исключение
      */
     public function load(MigrationRegistry $registry): void
     {
@@ -101,7 +101,7 @@ final class MigrationLoader
     }
 
     /**
-     * Return the configured migrations directory path.
+     * Возвращает путь к директории миграций.
      */
     public function getPath(): string
     {
