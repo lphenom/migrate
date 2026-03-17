@@ -7,13 +7,13 @@ namespace LPhenom\Migrate;
 use LPhenom\Migrate\Exception\MigrateException;
 
 /**
- * Loads migration PHP files from a directory and populates a MigrationRegistry.
+ * Загружает файлы миграций из директории и регистрирует их в MigrationRegistry.
  *
- * Each migration file MUST call MigrationAutoRegistrar::register() at file scope
- * to self-register into the active registry.  This convention avoids any dynamic
- * class loading (new $className()) and is fully KPHP-compatible.
+ * Каждый файл миграции ДОЛЖЕН вызывать MigrationAutoRegistrar::register() на уровне файла,
+ * чтобы самостоятельно зарегистрироваться в активном реестре. Это позволяет избежать
+ * динамической загрузки классов (new $className()), но само по себе требует интерпретатора PHP.
  *
- * Example migration file (database/migrations/20260101000001_create_users.php):
+ * Пример файла миграции (database/migrations/20260101000001_create_users.php):
  *   <?php
  *   declare(strict_types=1);
  *   use LPhenom\Migrate\MigrationAutoRegistrar;
@@ -27,9 +27,21 @@ use LPhenom\Migrate\Exception\MigrateException;
  *   }
  *   MigrationAutoRegistrar::register(new Migration20260101000001());
  *
- * KPHP note: require_once is supported in KPHP CLI mode.
+ * @kphp-incompatible
  *
- * Compatible with PHP 8.1+ and KPHP.
+ * Этот класс НЕ включается в KPHP-сборку и НЕ компилируется через kphp.
+ *
+ * Причина: метод load() выполняет `require_once $this->path . '/' . $file`, где путь
+ * вычисляется в рантайме из результатов scandir(). KPHP компилирует PHP → C++ на этапе
+ * сборки и обязан разрешить ВСЕ пути require_once статически (compile-time constants).
+ * Динамический путь, зависящий от файловой системы в рантайме, недопустим для KPHP.
+ *
+ * В KPHP-режиме миграции регистрируются явно в build/kphp-entrypoint.php:
+ *   require_once __DIR__ . '/../migrations/20260101000001_create_users.php';
+ *   // файл сам вызывает: MigrationAutoRegistrar::register(new Migration20260101000001());
+ *
+ * Исключён из build/kphp-entrypoint.php.
+ * Доступен только в PHP (shared hosting) режиме.
  */
 final class MigrationLoader
 {

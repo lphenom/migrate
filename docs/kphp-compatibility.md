@@ -6,13 +6,50 @@
 
 | Компонент | Статус |
 |---|---|
-| `MigrationRegistry` — типизированный массив `array<string, MigrationInterface>` | ✅ |
-| `MigrationAutoRegistrar` — static property + static method calls | ✅ |
-| `MigrationLoader` — `require_once $dynamicPath` (runtime path) | ❌ PHP-only |
-| `SchemaRepository` — `array<string, Param>` params, явные null-проверки | ✅ |
-| `Migrator` — `sort()`, `in_array()`, `count()` | ✅ |
-| `CommandDispatcher` — `if/elseif` вместо `match` | ✅ |
-| `SchemaRepository::getLastBatch()` — явная проверка `MAX()` на null | ✅ |
+| `MigrationRegistry` — типизированный массив `array<string, MigrationInterface>` | ✅ KPHP-совместим |
+| `MigrationAutoRegistrar` — static property + static method calls | ✅ KPHP-совместим |
+| `SchemaRepository` — `array<string, Param>` params, явные null-проверки | ✅ KPHP-совместим |
+| `Migrator` — `sort()`, `in_array()`, `count()` | ✅ KPHP-совместим |
+| `CommandDispatcher` — `if/elseif` вместо `match` | ✅ KPHP-совместим |
+| `MigrateCommand` — явные вызовы Migrator::migrate() | ✅ KPHP-совместим |
+| `RollbackCommand` — явные вызовы Migrator::rollback() | ✅ KPHP-совместим |
+| `StatusCommand` — явные вызовы Migrator::status() | ✅ KPHP-совместим |
+| `MakeCommand` — генерация PHP-файлов через file_put_contents() | ✅ KPHP-совместим (компилируется; в KPHP-бинарнике команда migrate:make недоступна) |
+| `MigrationLoader` — `require_once $dynamicPath` (путь вычисляется в рантайме) | ❌ **PHP-only** (`@kphp-incompatible`) |
+
+## Аннотация `@kphp-incompatible`
+
+Файлы, которые **не должны компилироваться через KPHP**, помечаются аннотацией `@kphp-incompatible`
+в docblock класса. Это явный маркер для разработчиков и CI-инструментов:
+
+```php
+/**
+ * ...описание...
+ *
+ * @kphp-incompatible
+ *
+ * Этот класс НЕ включается в KPHP-сборку и НЕ компилируется через kphp.
+ * Причина: ...
+ *
+ * В KPHP-режиме используйте: ...
+ */
+final class MigrationLoader { ... }
+```
+
+### Правила для PHP-only файлов
+
+| Правило | Описание |
+|---|---|
+| Маркировка | Обязателен `@kphp-incompatible` в docblock |
+| Исключение из entrypoint | Файл **не** включается в `build/kphp-entrypoint.php` |
+| Комментарий в entrypoint | В entrypoint обязателен комментарий: почему файл исключён |
+| Альтернатива для KPHP | В docblock описан KPHP-способ достичь того же результата |
+
+### Текущие PHP-only файлы в lphenom/migrate
+
+| Файл | Причина исключения из KPHP |
+|---|---|
+| `src/MigrationLoader.php` | Использует `require_once $dynamicPath` — KPHP требует статические пути |
 
 ## Принятые решения для KPHP
 
