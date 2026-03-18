@@ -64,25 +64,23 @@ return [
 По умолчанию миграции загружаются из `database/migrations/`.
 
 Каждый файл миграции ДОЛЖЕН:
-1. Реализовывать `LPhenom\Db\Migration\MigrationInterface`
-2. Вызвать `MigrationAutoRegistrar::register()` на уровне файла
+1. Объявлять класс в **глобальном пространстве имён** (без `namespace`)
+2. Реализовывать `LPhenom\Db\Migration\MigrationInterface`
+3. Не иметь конструктора с аргументами (или не иметь конструктора вовсе)
+
+`MigrationLoader` определяет имя класса из имени файла через алгоритм
+`filenameToClassName()` и создаёт экземпляр через `new $className()`.
 
 ```php
 <?php
-// database/migrations/20260101000001_create_users.php
+// database/migrations/20260318000001_create_users.php
 declare(strict_types=1);
 
 use LPhenom\Db\Contract\ConnectionInterface;
 use LPhenom\Db\Migration\MigrationInterface;
-use LPhenom\Migrate\MigrationAutoRegistrar;
 
-final class Migration20260101000001 implements MigrationInterface
+final class Migration20260318000001CreateUsers implements MigrationInterface
 {
-    public function getVersion(): string
-    {
-        return '20260101000001';
-    }
-
     public function up(ConnectionInterface $conn): void
     {
         $conn->execute(
@@ -99,13 +97,30 @@ final class Migration20260101000001 implements MigrationInterface
     {
         $conn->execute('DROP TABLE IF EXISTS users');
     }
-}
 
-MigrationAutoRegistrar::register(new Migration20260101000001());
+    public function getVersion(): string
+    {
+        return '20260318000001';
+    }
+}
 ```
 
-> **Соглашение по именованию файлов:** `YYYYMMDDHHMMSS_description.php`  
-> Версия в `getVersion()` должна совпадать с временным префиксом файла.
+### Соглашение по именованию
+
+| Составляющая | Формат | Пример |
+|---|---|---|
+| Имя файла | `YYYYMMDDNNNNNN_snake_case_name.php` | `20260318000001_create_users.php` |
+| Версия (`getVersion()`) | `YYYYMMDDNNNNNN` (14 цифр) | `20260318000001` |
+| Имя класса | `Migration{VERSION}{PascalCaseName}` | `Migration20260318000001CreateUsers` |
+
+Алгоритм преобразования имени файла в имя класса (`MigrationLoader::filenameToClassName()`):
+
+1. Убрать расширение `.php`
+2. Разбить по `_`
+3. Каждую часть — `ucfirst()`
+4. Склеить с префиксом `Migration`
+
+Пример: `20260318000001_create_users_table.php` → `Migration20260318000001CreateUsersTable`
 
 ---
 
@@ -113,28 +128,71 @@ MigrationAutoRegistrar::register(new Migration20260101000001());
 
 ### `migrate:make <name>` — создать файл миграции
 
-Генерирует новый файл миграции с правильной структурой (аналог `php artisan make:migration` в Laravel).
+Генерирует новый файл миграции с правильной структурой.
 
 ```bash
 vendor/bin/migrate migrate:make create_users_table
-vendor/bin/migrate migrate:make "add email to users"
-vendor/bin/migrate migrate:make add-index-to-posts --path=database/migrations
+vendor/bin/migrate migrate:make add_email_to_users
+vendor/bin/migrate migrate:make add_index_to_posts
 ```
 
 Результат:
 ```
-Migration created: database/migrations/20260314123456_create_users_table.php
-Class:             Migration20260314123456
-Version:           20260314123456
+Created migration: database/migrations/20260318000001_create_users_table.php
 ```
 
-Сгенерированный файл содержит готовый шаблон с `up()`, `down()`, `getVersion()` и автоматической регистрацией через `MigrationAutoRegistrar::register()`.
+Если в этот день уже создавались миграции — порядковый номер автоматически инкрементируется:
+
+```
+database/migrations/20260318000001_create_users_table.php   ← первая
+database/migrations/20260318000002_add_email_to_users.php   ← вторая
+database/migrations/20260318000003_add_index_to_posts.php   ← третья
+```
+
+Сгенерированный файл:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use LPhenom\Db\Contract\ConnectionInterface;
+use LPhenom\Db\Migration\MigrationInterface;
+
+final class Migration20260318000001CreateUsersTable implements MigrationInterface
+{
+    public function up(ConnectionInterface $conn): void
+    {
+        // TODO: implement
+    }
+
+    public function down(ConnectionInterface $conn): void
+    {
+        // TODO: implement
+    }
+
+    public function getVersion(): string
+    {
+        return '20260318000001';
+    }
+}
+```
+
+**Правила именования `<name>`:**
+
+| Правило | Описание |
+|---|---|
+| Разрешены символы | `[a-z0-9_]` только строчные буквы, цифры и подчёркивания |
+| Обязательный аргумент | Если не передан — ошибка, код `1` |
+| Пробелы запрещены | `"add email to users"` → ошибка |
+| Дефисы запрещены | `add-email-to-users` → ошибка |
+| Автоматическая нормализация | **Отсутствует** — передавайте уже нормализованное имя |
 
 **Особенности:**
-- Версия — `YmdHis` timestamp: `20260314123456`
-- Имя файла: `{version}_{name}.php`, класс: `Migration{version}`
+- Версия — `YYYYMMDDNNNNNN`: `YYYYMMDD` — текущая дата, `NNNNNN` — 6-значный порядковый номер за день (начиная с `000001`)
+- Имя файла: `{version}_{name}.php`, класс: `Migration{version}{PascalCaseName}`
 - Автоматически создаёт директорию если не существует
-- Нормализует имя: пробелы/дефисы → подчёркивания, lowercase
+- Проверяет уникальность: если файл уже существует — ошибка, код `1`
 - Не требует подключения к базе данных
 
 ### `migrate` — применить все ожидающие миграции
@@ -147,8 +205,8 @@ vendor/bin/migrate migrate --config=migrate.php --path=database/migrations
 
 Вывод:
 ```
-Migrated:  20260101000001
-Migrated:  20260101000002
+Migrated:  20260318000001
+Migrated:  20260318000002
 
 Applied 2 migration(s).
 ```
@@ -161,8 +219,8 @@ vendor/bin/migrate migrate:rollback
 
 Вывод:
 ```
-Rolled back: 20260101000002
-Rolled back: 20260101000001
+Rolled back: 20260318000002
+Rolled back: 20260318000001
 
 Rolled back 2 migration(s).
 ```
@@ -177,9 +235,9 @@ vendor/bin/migrate migrate:status
 ```
 Version                                            Status
 ------------------------------------------------------------
-20260101000001                                     applied
-20260101000002                                     applied
-20260101000003                                     pending
+20260318000001                                     applied
+20260318000002                                     applied
+20260318000003                                     pending
 ```
 
 ---
@@ -228,18 +286,18 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 declare(strict_types=1);
 
 use LPhenom\Migrate\MigrationRegistry;
-use LPhenom\Migrate\MigrationAutoRegistrar;
 use LPhenom\Migrate\MigrationLoader;
 use LPhenom\Migrate\SchemaRepository;
 use LPhenom\Migrate\Migrator;
 
-// 1. Создайте registry и загрузите миграции из папки
+// 1. Создайте registry и загрузите миграции из папки (PHP/shared-hosting режим)
+//    MigrationLoader определяет имя класса из имени файла и делает new $className()
 $registry = new MigrationRegistry();
 $loader   = new MigrationLoader(__DIR__ . '/database/migrations');
 $loader->load($registry);
 
 // 2. Или зарегистрируйте вручную (для KPHP-совместимого кода)
-$registry->register(new CreateUsersTable());
+$registry->register(new Migration20260318000001CreateUsersTable());
 
 // 3. Создайте репозиторий и Migrator
 $repository = new SchemaRepository($conn, 'schema_migrations');
@@ -264,8 +322,8 @@ $status = $migrator->status(); // array<string, string>: version => 'applied'|'p
 
 | Режим | Как загружаются миграции | Подключение к БД |
 |---|---|---|
-| **Shared hosting (PHP)** | `MigrationLoader` из директории | PDO (PdoMySqlConnection) |
-| **KPHP binary** | Явный `require_once` + `MigrationRegistry::register()` | FFI (FfiMySqlConnection) |
+| **Shared hosting (PHP)** | `MigrationLoader` — авто через `new $className()` | PDO (PdoMySqlConnection) |
+| **KPHP binary** | Явный `require_once` + `$registry->register(new MigrationXXX())` | FFI (FfiMySqlConnection) |
 
 ---
 
@@ -274,6 +332,9 @@ $status = $migrator->status(); // array<string, string>: version => 'applied'|'p
 Используется файл `bin/migrate` с конфигом `migrate.php`:
 
 ```bash
+# Создать файл миграции
+vendor/bin/migrate migrate:make create_users_table
+
 # Применить миграции
 vendor/bin/migrate migrate --config=migrate.php --path=database/migrations
 
@@ -282,9 +343,6 @@ vendor/bin/migrate migrate:rollback --config=migrate.php
 
 # Показать статус
 vendor/bin/migrate migrate:status --config=migrate.php
-
-# Создать файл миграции
-vendor/bin/migrate migrate:make create_users_table
 ```
 
 `migrate.php` должен возвращать `ConnectionInterface` или массив с ключом `connection`:
@@ -302,33 +360,33 @@ return ConnectionFactory::create([
 ]);
 ```
 
+`MigrationLoader` автоматически загружает все `.php`-файлы из директории, определяет имя класса
+через `MigrationLoader::filenameToClassName()` и регистрирует их в реестре.
+
 ---
 
 ### Режим 2: KPHP compiled binary
 
 В KPHP все PHP-файлы компилируются в C++ → статический бинарник **без PHP runtime**.
-Поэтому динамическая загрузка PHP-файлов (`MigrationLoader`) недоступна в runtime.
+`MigrationLoader` (использует `new $className()`) **недоступен** в KPHP — динамическое
+создание классов запрещено компилятором. Все миграции регистрируются явно в entrypoint.
 
 **Workflow:**
 
-#### Шаг 1: Создайте migration-файлы (PHP 8.1 синтаксис)
+#### Шаг 1: Создайте файлы миграций
+
+Файлы миграций — обычный PHP без `namespace` и без `MigrationAutoRegistrar`:
 
 ```php
 <?php
-// database/migrations/20260101000001_create_users.php
+// database/migrations/20260318000001_create_users.php
 declare(strict_types=1);
 
 use LPhenom\Db\Contract\ConnectionInterface;
 use LPhenom\Db\Migration\MigrationInterface;
-use LPhenom\Migrate\MigrationAutoRegistrar;
 
-final class Migration20260101000001 implements MigrationInterface
+final class Migration20260318000001CreateUsers implements MigrationInterface
 {
-    public function getVersion(): string
-    {
-        return '20260101000001';
-    }
-
     public function up(ConnectionInterface $conn): void
     {
         $conn->execute(
@@ -340,19 +398,21 @@ final class Migration20260101000001 implements MigrationInterface
     {
         $conn->execute('DROP TABLE IF EXISTS users');
     }
-}
 
-MigrationAutoRegistrar::register(new Migration20260101000001());
+    public function getVersion(): string
+    {
+        return '20260318000001';
+    }
+}
 ```
 
-> **Важно:** `MigrationAutoRegistrar::register()` в KPHP entrypoint вызывается с `$registry` установленным
-> через `MigrationAutoRegistrar::setRegistry()`, как и в PHP режиме. Или регистрируйте напрямую через `$registry->register()`.
+> Файлы миграций создаются командой `migrate:make` в PHP-режиме и уже имеют правильный формат.
 
 #### Шаг 2: Создайте KPHP entrypoint файл
 
 ```php
 <?php
-// build/kphp-entrypoint.php — замените под свой проект
+// build/kphp-entrypoint.php
 declare(strict_types=1);
 
 // lphenom/db зависимости (в правильном порядке)
@@ -366,7 +426,7 @@ require_once __DIR__ . '/../vendor/lphenom/db/src/Driver/FfiMySqlHeader.php';
 require_once __DIR__ . '/../vendor/lphenom/db/src/Driver/FfiMySqlResult.php';
 require_once __DIR__ . '/../vendor/lphenom/db/src/Driver/FfiMySqlConnection.php';
 
-// lphenom/migrate (MigrationLoader исключён: KPHP не поддерживает require_once $variable)
+// lphenom/migrate (MigrationLoader исключён: использует new $className() — запрещено в KPHP)
 require_once __DIR__ . '/../src/Exception/MigrateException.php';
 require_once __DIR__ . '/../src/MigrationRegistry.php';
 require_once __DIR__ . '/../src/MigrationAutoRegistrar.php';
@@ -378,9 +438,9 @@ require_once __DIR__ . '/../src/Command/RollbackCommand.php';
 require_once __DIR__ . '/../src/Command/StatusCommand.php';
 require_once __DIR__ . '/../src/CommandDispatcher.php';
 
-// Явно регистрируем все migration-файлы (без MigrationLoader)
-require_once __DIR__ . '/../database/migrations/20260101000001_create_users.php';
-require_once __DIR__ . '/../database/migrations/20260101000002_add_users_index.php';
+// Явно подключаем файлы миграций (без MigrationLoader)
+require_once __DIR__ . '/../database/migrations/20260318000001_create_users.php';
+require_once __DIR__ . '/../database/migrations/20260318000002_add_users_index.php';
 // ... добавляйте новые миграции сюда
 
 // Подключение к БД через FFI (KPHP-native)
@@ -392,13 +452,11 @@ $conn = new \LPhenom\Db\Driver\FfiMySqlConnection(
     $_ENV['DB_PASS'] ?? ''
 );
 
-// Registry — наполняется через MigrationAutoRegistrar при require_once выше
-$registry   = new \LPhenom\Migrate\MigrationRegistry();
-
-// Файлы миграций вызвали MigrationAutoRegistrar::register() при require_once,
-// но без setRegistry(). Поэтому используем прямую регистрацию:
-$registry->register(new Migration20260101000001());
-$registry->register(new Migration20260101000002());
+// Явная регистрация миграций (имена классов совпадают с filenameToClassName())
+$registry = new \LPhenom\Migrate\MigrationRegistry();
+$registry->register(new Migration20260318000001CreateUsers());
+$registry->register(new Migration20260318000002AddUsersIndex());
+// ... добавляйте новые миграции сюда
 
 $repository = new \LPhenom\Migrate\SchemaRepository($conn, 'schema_migrations');
 $migrator   = new \LPhenom\Migrate\Migrator($registry, $repository);
@@ -442,19 +500,21 @@ DB_HOST=localhost DB_NAME=myapp DB_USER=root DB_PASS=secret \
 
 **Что работает в KPHP binary:**
 
-| Команда | Статус |
-|---|---|
-| `migrate` (apply pending) | ✅ |
-| `migrate:rollback` | ✅ |
-| `migrate:status` | ✅ |
-| `migrate:make` | ❌ Только в PHP-режиме (генерирует PHP-файлы) |
+| Команда | Статус | Примечание |
+|---|---|---|
+| `migrate` | ✅ | Применяет ожидающие миграции |
+| `migrate:rollback` | ✅ | Откатывает последний batch |
+| `migrate:status` | ✅ | Показывает статус всех миграций |
+| `migrate:make` | ❌ | Только в PHP-режиме — генерирует PHP-файлы |
 
 **Добавление новой миграции в KPHP-проект:**
 
-1. Создайте файл миграции (PHP-синтаксис)
-2. Добавьте `require_once` в entrypoint
-3. Добавьте `$registry->register(new MigrationXXX())` в entrypoint
-4. Перекомпилируйте бинарник: `kphp -d ... -M cli entrypoint.php`
+1. Создайте файл миграции через `vendor/bin/migrate migrate:make my_migration` (в PHP-режиме)
+2. Добавьте `require_once` на новый файл в entrypoint
+3. Добавьте `$registry->register(new Migration{VERSION}{PascalCaseName}())` в entrypoint
+4. Перекомпилируйте бинарник: `kphp -d /build/kphp-out -M cli build/kphp-entrypoint.php`
+
+> Имя класса всегда можно определить из имени файла через `MigrationLoader::filenameToClassName('20260318000001_my_migration.php')` → `Migration20260318000001MyMigration`
 
 > **Примечание:** `migrate:make` генерирует заготовку migration-файла и доступен только в PHP (shared hosting) режиме. В KPHP binary генерировать PHP-файлы бессмысленно, так как для применения новых миграций бинарник всё равно нужно перекомпилировать.
 
@@ -477,4 +537,3 @@ make lint
 # Проверить KPHP-совместимость + PHAR build
 make kphp-check
 ```
-
