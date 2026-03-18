@@ -55,20 +55,20 @@ final class MigrationLoaderTest extends TestCase
 
     public function testLoadSingleMigration(): void
     {
-        $this->writeMigrationFile('20260101000001_create_users.php', '20260101000001');
+        $this->writeMigrationFile('20260801000001_create_users.php', '20260801000001');
 
         $registry = new MigrationRegistry();
         $loader   = new MigrationLoader($this->tmpDir);
         $loader->load($registry);
 
-        self::assertSame(['20260101000001'], $registry->versions());
+        self::assertSame(['20260801000001'], $registry->versions());
     }
 
     public function testLoadMultipleMigrations(): void
     {
-        $this->writeMigrationFile('20260101000001_create_users.php', '20260101000001');
-        $this->writeMigrationFile('20260101000002_create_posts.php', '20260101000002');
-        $this->writeMigrationFile('20260101000003_add_index.php', '20260101000003');
+        $this->writeMigrationFile('20260802000001_create_users.php', '20260802000001');
+        $this->writeMigrationFile('20260802000002_create_posts.php', '20260802000002');
+        $this->writeMigrationFile('20260802000003_add_index.php', '20260802000003');
 
         $registry = new MigrationRegistry();
         $loader   = new MigrationLoader($this->tmpDir);
@@ -79,7 +79,7 @@ final class MigrationLoaderTest extends TestCase
 
     public function testSkipsNonPhpFiles(): void
     {
-        $this->writeMigrationFile('20260101000001_create_users.php', '20260101000001');
+        $this->writeMigrationFile('20260803000001_create_users.php', '20260803000001');
         file_put_contents($this->tmpDir . '/README.txt', 'should be ignored');
         file_put_contents($this->tmpDir . '/migration.sql', 'SELECT 1');
 
@@ -114,18 +114,32 @@ final class MigrationLoaderTest extends TestCase
         self::assertSame('/some/path', $loader->getPath());
     }
 
+    public function testFilenameToClassName(): void
+    {
+        self::assertSame(
+            'Migration20260318000001CreateUsersTable',
+            MigrationLoader::filenameToClassName('20260318000001_create_users_table.php')
+        );
+        self::assertSame(
+            'Migration20260101000001Init',
+            MigrationLoader::filenameToClassName('20260101000001_init.php')
+        );
+        self::assertSame(
+            'Migration20260318000001CreateUsersTable',
+            MigrationLoader::filenameToClassName('20260318000001_create_users_table')
+        );
+    }
+
     // ---- helpers ----
 
     /**
-     * Write a self-registering migration PHP file to the temp directory.
-     * Class name includes a hash of the tmpDir to prevent "already declared" fatal errors
-     * when multiple test methods include files with the same version in the same process.
+     * Write a migration PHP file with class name matching MigrationLoader::filenameToClassName().
+     * Uses unique date prefixes per version to avoid "class already declared" PHP errors
+     * when multiple test methods run in the same process.
      */
     private function writeMigrationFile(string $filename, string $version): void
     {
-        // Make class name unique per test instance using a hash of the temp directory path
-        $uniqueSuffix = 'h' . substr(md5($this->tmpDir), 0, 8);
-        $className    = 'TestMigLoader_' . str_replace('.', '_', $version) . '_' . $uniqueSuffix;
+        $className = MigrationLoader::filenameToClassName($filename);
 
         $content = <<<PHP
 <?php
@@ -133,7 +147,6 @@ declare(strict_types=1);
 
 use LPhenom\\Db\\Contract\\ConnectionInterface;
 use LPhenom\\Db\\Migration\\MigrationInterface;
-use LPhenom\\Migrate\\MigrationAutoRegistrar;
 
 final class {$className} implements MigrationInterface
 {
@@ -141,8 +154,6 @@ final class {$className} implements MigrationInterface
     public function up(ConnectionInterface \$conn): void {}
     public function down(ConnectionInterface \$conn): void {}
 }
-
-MigrationAutoRegistrar::register(new {$className}());
 PHP;
 
         file_put_contents($this->tmpDir . DIRECTORY_SEPARATOR . $filename, $content);

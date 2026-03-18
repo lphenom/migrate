@@ -9,36 +9,40 @@ use LPhenom\Migrate\Exception\MigrateException;
 /**
  * Загружает файлы миграций из директории и регистрирует их в MigrationRegistry.
  *
- * Каждый файл миграции ДОЛЖЕН вызывать MigrationAutoRegistrar::register() на уровне файла,
- * чтобы самостоятельно зарегистрироваться в активном реестре. Это позволяет избежать
- * динамической загрузки классов (new $className()), но само по себе требует PHP-интерпретатора.
+ * Каждый файл миграции должен объявлять класс в глобальном пространстве имён.
+ * MigrationLoader определяет имя класса по имени файла через filenameToClassName(),
+ * затем создаёт экземпляр через new $className() и регистрирует его в реестре.
  *
- * Пример файла миграции (database/migrations/20260101000001_create_users.php):
+ * Пример файла миграции (database/migrations/20260318000001_create_users.php):
  *   <?php
  *   declare(strict_types=1);
- *   use LPhenom\Migrate\MigrationAutoRegistrar;
  *   use LPhenom\Db\Contract\ConnectionInterface;
  *   use LPhenom\Db\Migration\MigrationInterface;
  *
- *   final class Migration20260101000001 implements MigrationInterface {
- *       public function getVersion(): string { return '20260101000001'; }
+ *   final class Migration20260318000001CreateUsers implements MigrationInterface {
+ *       public function getVersion(): string { return '20260318000001'; }
  *       public function up(ConnectionInterface $conn): void { ... }
  *       public function down(ConnectionInterface $conn): void { ... }
  *   }
- *   MigrationAutoRegistrar::register(new Migration20260101000001());
+ *
+ * Алгоритм filenameToClassName():
+ *   1. Убрать расширение .php
+ *   2. Разбить по '_'
+ *   3. Каждую часть — ucfirst()
+ *   4. Склеить с префиксом 'Migration'
+ *
+ *   Пример: 20260318000001_create_users_table.php → Migration20260318000001CreateUsersTable
  *
  * @lphenom-build shared
  *
  * Этот класс НЕ включается в KPHP-сборку и НЕ компилируется через kphp.
  *
- * Причина: метод load() выполняет `require_once $this->path . '/' . $file`, где путь
- * вычисляется в рантайме из результатов scandir(). KPHP компилирует PHP → C++ на этапе
- * сборки и обязан разрешить ВСЕ пути require_once статически (compile-time constants).
- * Динамический путь, зависящий от файловой системы в рантайме, недопустим для KPHP.
+ * Причина: метод load() выполняет `new $className`, где $className вычисляется в рантайме.
+ * KPHP запрещает динамическое создание классов (new $variable()).
  *
  * В KPHP-режиме миграции регистрируются явно в build/kphp-entrypoint.php:
- *   require_once __DIR__ . '/../migrations/20260101000001_create_users.php';
- *   // файл сам вызывает: MigrationAutoRegistrar::register(new Migration20260101000001());
+ *   require_once __DIR__ . '/../migrations/20260318000001_create_users_table.php';
+ *   MigrationAutoRegistrar::register(new Migration20260318000001CreateUsersTable());
  *
  * Исключён из build/kphp-entrypoint.php.
  * Доступен только в PHP shared hosting режиме.
@@ -71,8 +75,6 @@ final class MigrationLoader
             return;
         }
 
-        MigrationAutoRegistrar::setRegistry($registry);
-
         $exception = null;
         try {
             foreach ($files as $file) {
@@ -84,12 +86,14 @@ final class MigrationLoader
                 }
 
                 require_once $this->path . '/' . $file;
+
+                $className = self::filenameToClassName($file);
+                $migration = new $className();
+                $registry->register($migration);
             }
         } catch (\Throwable $e) {
             $exception = $e;
         }
-
-        MigrationAutoRegistrar::clearRegistry();
 
         if ($exception !== null) {
             throw new MigrateException(
@@ -98,6 +102,35 @@ final class MigrationLoader
                 $exception
             );
         }
+    }
+
+    /**
+     * Convert a migration filename to its class name.
+     *
+     * Algorithm:
+     *  1. Strip .php extension
+     *  2. Split by '_'
+     *  3. ucfirst() each part
+     *  4. Prepend 'Migration'
+     *
+     * Examples:
+     *   20260318000001_create_users_table.php  → Migration20260318000001CreateUsersTable
+     *   20260101000001_init.php                → Migration20260101000001Init
+     */
+    public static function filenameToClassName(string $filename): string
+    {
+        // Strip .php extension
+        if (substr($filename, -4) === '.php') {
+            $filename = substr($filename, 0, strlen($filename) - 4);
+        }
+
+        $parts  = explode('_', $filename);
+        $result = '';
+        foreach ($parts as $part) {
+            $result .= ucfirst($part);
+        }
+
+        return 'Migration' . $result;
     }
 
     /**

@@ -5,26 +5,25 @@ declare(strict_types=1);
 namespace LPhenom\Migrate\Command;
 
 /**
- * Generates a new migration file (similar to Laravel's `php artisan make:migration`).
+ * Generates a new migration file.
  *
  * Usage:
  *   vendor/bin/migrate migrate:make create_users_table
- *   vendor/bin/migrate migrate:make add_email_to_users --path=database/migrations
  *
- * Generated file:
- *   database/migrations/20260314123456_create_users_table.php
+ * Generated file name:
+ *   database/migrations/20260318000001_create_users_table.php
  *
- * Generated class:
- *   final class Migration20260314123456 implements MigrationInterface { ... }
- *   MigrationAutoRegistrar::register(new Migration20260314123456());
+ * Generated class name:
+ *   Migration20260318000001CreateUsersTable
  *
- * The version is a YmdHis timestamp (e.g. 20260314123456).
- * The class name includes the timestamp only — no conflicts, easy sorting.
+ * Version format: YYYYMMDDNNNNNN
+ *   YYYYMMDD — current date
+ *   NNNNNN   — 6-digit sequential number per day (starts at 000001, increments)
  *
  * KPHP notes:
- *  - date() is supported in KPHP.
- *  - is_dir(), mkdir(), file_exists(), file_put_contents() — KPHP CLI mode.
- *  - explode() + implode() + ucfirst() — KPHP-compatible string utilities.
+ *  - date() supported in KPHP.
+ *  - is_dir(), mkdir(), file_exists(), file_put_contents(), scandir() — KPHP CLI mode.
+ *  - explode() + ucfirst() — KPHP-compatible.
  *  - No str_starts_with / str_ends_with / str_contains — not supported in KPHP.
  *  - fwrite(STDERR) — supported in KPHP CLI.
  *
@@ -58,50 +57,50 @@ final class MakeCommand implements CommandInterface
             return 1;
         }
 
-        // Normalise name: lowercase, spaces/dashes to underscores
-        $safeName = $this->normaliseName($this->name);
-
-        // Ensure migrations directory exists
-        if (!is_dir($this->migrationsPath)) {
-            mkdir($this->migrationsPath, 0755, true);
-            echo 'Created directory: ' . $this->migrationsPath . PHP_EOL;
-        }
-
-        $version   = date('YmdHis');
-        $className = 'Migration' . $version;
-        $fileName  = $version . '_' . $safeName . '.php';
-        $filePath  = $this->migrationsPath . '/' . $fileName;
-
-        if (file_exists($filePath)) {
-            fwrite(STDERR, 'Migration already exists: ' . $filePath . PHP_EOL);
+        if (!$this->isValidName($this->name)) {
+            fwrite(STDERR, 'Error: migration name must contain only [a-z0-9_].' . PHP_EOL);
+            fwrite(STDERR, 'Usage: migrate:make <name>' . PHP_EOL);
+            fwrite(STDERR, 'Example: migrate:make create_users_table' . PHP_EOL);
 
             return 1;
         }
 
-        $content = $this->renderTemplate($version, $className, $safeName);
+        // Ensure migrations directory exists
+        if (!is_dir($this->migrationsPath)) {
+            mkdir($this->migrationsPath, 0755, true);
+        }
+
+        $datePrefix = date('Ymd');
+        $sequence   = $this->nextSequence($datePrefix);
+        $version    = $datePrefix . str_pad((string) $sequence, 6, '0', STR_PAD_LEFT);
+        $className  = $this->buildClassName($version, $this->name);
+        $fileName   = $version . '_' . $this->name . '.php';
+        $filePath   = $this->migrationsPath . '/' . $fileName;
+
+        if (file_exists($filePath)) {
+            fwrite(STDERR, 'Error: migration already exists: ' . $filePath . PHP_EOL);
+
+            return 1;
+        }
+
+        $content = $this->renderTemplate($version, $className);
         file_put_contents($filePath, $content);
 
-        echo 'Migration created: ' . $filePath . PHP_EOL;
-        echo 'Class:             ' . $className . PHP_EOL;
-        echo 'Version:           ' . $version . PHP_EOL;
+        echo 'Created migration: ' . $this->migrationsPath . '/' . $fileName . PHP_EOL;
 
         return 0;
     }
 
     /**
-     * Normalise the user-supplied name:
-     *   "Create users table"  → "create_users_table"
-     *   "Add-email-to-users"  → "add_email_to_users"
+     * Validate that name contains only [a-z0-9_].
      */
-    private function normaliseName(string $name): string
+    private function isValidName(string $name): bool
     {
-        // lowercase
-        $name = strtolower($name);
-        // spaces and dashes to underscores
-        $name = str_replace([' ', '-'], '_', $name);
-        // strip characters that are not alphanumeric or underscore
-        $stripped = '';
-        $len      = strlen($name);
+        $len = strlen($name);
+        if ($len === 0) {
+            return false;
+        }
+
         for ($i = 0; $i < $len; $i++) {
             $ch = $name[$i];
             if (
@@ -109,57 +108,89 @@ final class MakeCommand implements CommandInterface
                 || ($ch >= '0' && $ch <= '9')
                 || $ch === '_'
             ) {
-                $stripped .= $ch;
+                continue;
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Find the next 6-digit sequential number for a given date prefix.
+     * Scans the migrations directory for existing files with the same YYYYMMDD prefix.
+     */
+    private function nextSequence(string $datePrefix): int
+    {
+        $maxSeq = 0;
+
+        $files = scandir($this->migrationsPath);
+        if ($files === false) {
+            return 1;
+        }
+
+        foreach ($files as $file) {
+            if (substr($file, -4) !== '.php') {
+                continue;
+            }
+            if (substr($file, 0, 8) !== $datePrefix) {
+                continue;
+            }
+            // Version is characters 0-13: YYYYMMDDNNNNNN
+            $seqStr = substr($file, 8, 6);
+            $seq    = (int) $seqStr;
+            if ($seq > $maxSeq) {
+                $maxSeq = $seq;
             }
         }
 
-        // trim leading/trailing underscores
-        return trim($stripped, '_');
+        return $maxSeq + 1;
+    }
+
+    /**
+     * Build PascalCase class name from version and snake_case name.
+     * (20260318000001, create_users_table) → Migration20260318000001CreateUsersTable
+     */
+    private function buildClassName(string $version, string $name): string
+    {
+        $parts  = explode('_', $name);
+        $pascal = '';
+        foreach ($parts as $part) {
+            $pascal .= ucfirst($part);
+        }
+
+        return 'Migration' . $version . $pascal;
     }
 
     /**
      * Render the migration file template.
      */
-    private function renderTemplate(string $version, string $className, string $safeName): string
+    private function renderTemplate(string $version, string $className): string
     {
         return '<?php' . PHP_EOL
             . PHP_EOL
             . 'declare(strict_types=1);' . PHP_EOL
             . PHP_EOL
-            . '/**' . PHP_EOL
-            . ' * Migration: ' . $safeName . PHP_EOL
-            . ' * Version:   ' . $version . PHP_EOL
-            . ' *' . PHP_EOL
-            . ' * Generated by lphenom/migrate.' . PHP_EOL
-            . ' * Implement up() and down() methods.' . PHP_EOL
-            . ' */' . PHP_EOL
-            . PHP_EOL
             . 'use LPhenom\\Db\\Contract\\ConnectionInterface;' . PHP_EOL
             . 'use LPhenom\\Db\\Migration\\MigrationInterface;' . PHP_EOL
-            . 'use LPhenom\\Migrate\\MigrationAutoRegistrar;' . PHP_EOL
             . PHP_EOL
             . 'final class ' . $className . ' implements MigrationInterface' . PHP_EOL
             . '{' . PHP_EOL
-            . '    public function getVersion(): string' . PHP_EOL
-            . '    {' . PHP_EOL
-            . '        return \'' . $version . '\';' . PHP_EOL
-            . '    }' . PHP_EOL
-            . PHP_EOL
             . '    public function up(ConnectionInterface $conn): void' . PHP_EOL
             . '    {' . PHP_EOL
-            . '        // TODO: implement migration' . PHP_EOL
-            . '        // Example:' . PHP_EOL
-            . '        // $conn->execute(\'CREATE TABLE ' . $safeName . ' (...)\');' . PHP_EOL
+            . '        // TODO: implement' . PHP_EOL
             . '    }' . PHP_EOL
             . PHP_EOL
             . '    public function down(ConnectionInterface $conn): void' . PHP_EOL
             . '    {' . PHP_EOL
-            . '        // TODO: implement rollback' . PHP_EOL
-            . '        // Example:' . PHP_EOL
-            . '        // $conn->execute(\'DROP TABLE IF EXISTS ' . $safeName . '\');' . PHP_EOL
+            . '        // TODO: implement' . PHP_EOL
             . '    }' . PHP_EOL
-            . '}' . PHP_EOL
             . PHP_EOL
-            . 'MigrationAutoRegistrar::register(new ' . $className . '());' . PHP_EOL;
+            . '    public function getVersion(): string' . PHP_EOL
+            . '    {' . PHP_EOL
+            . '        return \'' . $version . '\';' . PHP_EOL
+            . '    }' . PHP_EOL
+            . '}' . PHP_EOL;
     }
 }

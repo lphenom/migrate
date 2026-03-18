@@ -63,8 +63,8 @@ final class MakeCommandTest extends TestCase
         $file    = (string) $files[0];
         $content = (string) file_get_contents($this->tmpDir . DIRECTORY_SEPARATOR . $file);
 
-        // File name: YYYYMMDDHHMMSS_create_users_table.php
-        self::assertMatchesRegularExpression('/^\d{14}_create_users_table\.php$/', $file);
+        // File name: YYYYMMDD000001_create_users_table.php (8-digit date + 6-digit seq)
+        self::assertMatchesRegularExpression('/^\d{8}\d{6}_create_users_table\.php$/', $file);
 
         // Content checks
         self::assertStringContainsString('declare(strict_types=1)', $content);
@@ -72,10 +72,10 @@ final class MakeCommandTest extends TestCase
         self::assertStringContainsString('public function up(ConnectionInterface $conn): void', $content);
         self::assertStringContainsString('public function down(ConnectionInterface $conn): void', $content);
         self::assertStringContainsString('public function getVersion(): string', $content);
-        self::assertStringContainsString('MigrationAutoRegistrar::register(', $content);
         self::assertStringContainsString('use LPhenom\\Db\\Contract\\ConnectionInterface', $content);
         self::assertStringContainsString('use LPhenom\\Db\\Migration\\MigrationInterface', $content);
-        self::assertStringContainsString('use LPhenom\\Migrate\\MigrationAutoRegistrar', $content);
+        // No MigrationAutoRegistrar in new template
+        self::assertStringNotContainsString('MigrationAutoRegistrar', $content);
     }
 
     public function testCreatesDirectoryIfNotExists(): void
@@ -96,32 +96,31 @@ final class MakeCommandTest extends TestCase
         $code = $cmd->run();
 
         self::assertSame(1, $code);
-        // setUp() created tmpDir, so scandir is safe; no files should be created
         $files = array_diff((array) scandir($this->tmpDir), ['.', '..']);
         self::assertCount(0, $files);
     }
 
-    public function testNormalisesNameWithSpaces(): void
+    public function testRejectsNameWithSpaces(): void
     {
         $cmd  = new MakeCommand($this->tmpDir, 'Add Email To Users');
         $code = $cmd->run();
 
-        self::assertSame(0, $code);
-        $files = array_values(array_diff((array) scandir($this->tmpDir), ['.', '..']));
-        self::assertMatchesRegularExpression('/^\d{14}_add_email_to_users\.php$/', (string) $files[0]);
+        self::assertSame(1, $code);
+        $files = array_diff((array) scandir($this->tmpDir), ['.', '..']);
+        self::assertCount(0, $files);
     }
 
-    public function testNormalisesNameWithDashes(): void
+    public function testRejectsNameWithDashes(): void
     {
         $cmd  = new MakeCommand($this->tmpDir, 'add-index-to-posts');
         $code = $cmd->run();
 
-        self::assertSame(0, $code);
-        $files = array_values(array_diff((array) scandir($this->tmpDir), ['.', '..']));
-        self::assertMatchesRegularExpression('/^\d{14}_add_index_to_posts\.php$/', (string) $files[0]);
+        self::assertSame(1, $code);
+        $files = array_diff((array) scandir($this->tmpDir), ['.', '..']);
+        self::assertCount(0, $files);
     }
 
-    public function testVersionIsTimestampFormat(): void
+    public function testVersionIsSequentialFormat(): void
     {
         $cmd  = new MakeCommand($this->tmpDir, 'test_migration');
         $code = $cmd->run();
@@ -129,13 +128,55 @@ final class MakeCommandTest extends TestCase
         self::assertSame(0, $code);
         $files   = array_values(array_diff((array) scandir($this->tmpDir), ['.', '..']));
         $file    = (string) $files[0];
-        $version = substr($file, 0, 14); // YYYYMMDDHHMMSS
 
-        self::assertMatchesRegularExpression('/^\d{14}$/', $version);
+        // Version: YYYYMMDDNNNNNN (14 digits: 8-digit date + 6-digit seq)
+        $version = substr($file, 0, 14);
+        self::assertMatchesRegularExpression('/^\d{8}\d{6}$/', $version);
+
+        // Sequence part must be 000001 for the first migration
+        $seq = substr($version, 8, 6);
+        self::assertSame('000001', $seq);
 
         $content = (string) file_get_contents($this->tmpDir . DIRECTORY_SEPARATOR . $file);
         self::assertStringContainsString("return '" . $version . "'", $content);
-        self::assertStringContainsString('Migration' . $version, $content);
+        // Class name includes version AND PascalCase name
+        self::assertStringContainsString('Migration' . $version . 'TestMigration', $content);
+    }
+
+    public function testSequentialNumberingIncrementsPerDay(): void
+    {
+        $datePrefix = date('Ymd');
+
+        // Create first migration manually with seq 000001
+        $existingFile = $this->tmpDir . '/' . $datePrefix . '000001_first_migration.php';
+        file_put_contents($existingFile, '<?php // existing');
+
+        // Now generate a new one — should get seq 000002
+        $cmd  = new MakeCommand($this->tmpDir, 'second_migration');
+        $code = $cmd->run();
+
+        self::assertSame(0, $code);
+        $files = array_values(array_diff((array) scandir($this->tmpDir), ['.', '..', $datePrefix . '000001_first_migration.php']));
+        self::assertCount(1, $files);
+
+        $newFile = (string) $files[0];
+        $seq     = substr($newFile, 8, 6);
+        self::assertSame('000002', $seq);
+    }
+
+    public function testClassNameIncludesPascalCaseName(): void
+    {
+        $cmd  = new MakeCommand($this->tmpDir, 'create_users_table');
+        $code = $cmd->run();
+
+        self::assertSame(0, $code);
+        $files   = array_values(array_diff((array) scandir($this->tmpDir), ['.', '..']));
+        $file    = (string) $files[0];
+        $version = substr($file, 0, 14);
+        $content = (string) file_get_contents($this->tmpDir . DIRECTORY_SEPARATOR . $file);
+
+        // Class must be Migration{VERSION}CreateUsersTable
+        self::assertStringContainsString('final class Migration' . $version . 'CreateUsersTable', $content);
     }
 
     public function testGeneratedFileIsValidPhp(): void
@@ -144,7 +185,7 @@ final class MakeCommandTest extends TestCase
         $code = $cmd->run();
 
         self::assertSame(0, $code);
-        $files   = array_values(array_diff((array) scandir($this->tmpDir), ['.', '..']));
+        $files    = array_values(array_diff((array) scandir($this->tmpDir), ['.', '..']));
         $filePath = $this->tmpDir . DIRECTORY_SEPARATOR . (string) $files[0];
 
         // Check PHP syntax
